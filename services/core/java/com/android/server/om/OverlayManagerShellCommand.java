@@ -47,7 +47,9 @@ final class OverlayManagerShellCommand extends ShellCommand {
     @Override
     public int onCommand(@Nullable final String cmd) {
         if (cmd == null) {
-            return handleDefaultCommands(cmd);
+            final PrintWriter out = getOutPrintWriter();
+            out.println("The overlay manager has already been initialized.");
+            return -1;
         }
         final PrintWriter err = getErrPrintWriter();
         try {
@@ -168,20 +170,10 @@ final class OverlayManagerShellCommand extends ShellCommand {
             packageName = getNextArg();
         }
         if (argc > 1) {
-            int counter = 0;
-            int size = packages.size();
             for (String pkg : packages) {
-                counter++;
-                if (counter < size) {
-                    boolean ret = mInterface.setEnabled(pkg, enable, userId, true);
-                    if (!ret) {
-                        System.err.println("Error: Failed to " + ((enable) ? "enable ": "disable ") + pkg);
-                    }
-                } else {
-                    boolean ret = mInterface.setEnabled(pkg, enable, userId, false);
-                    if (!ret) {
-                        System.err.println("Error: Failed to " + ((enable) ? "enable ": "disable ") + pkg);
-                    }
+                boolean ret = mInterface.setEnabled(pkg, enable, userId, false);
+                if (!ret) {
+                    System.err.println("Error: Failed to " + ((enable) ? "enable ": "disable ") + pkg);
                 }
             }
             return 0;
@@ -200,7 +192,7 @@ final class OverlayManagerShellCommand extends ShellCommand {
             switch (opt) {
                 case "--user":
                     userId = UserHandle.parseUserArg(getNextArgRequired());
-                    break;
+                	break;
                 default:
                     System.err.println("Error: Unknown option: " + opt);
                     return 1;
@@ -209,12 +201,38 @@ final class OverlayManagerShellCommand extends ShellCommand {
 
         try {
             Map<String, List<OverlayInfo>> targetsAndOverlays = mInterface.getAllOverlays(userId);
+            int iterator = 0;
+            int overlaySize = targetsAndOverlays.entrySet().size();
             for (Entry<String, List<OverlayInfo>> targetEntry : targetsAndOverlays.entrySet()) {
+                int iterator_nested = 0;
+                int targetSize_nested = targetEntry.getValue().size();
+                iterator++;
                 for (OverlayInfo oi : targetEntry.getValue()) {
-                    boolean worked = mInterface.setEnabled(oi.packageName, false, userId, true);
-                    if (!worked) {
-                        System.err.println("Failed to disable " + oi.packageName);
+                    if (iterator_nested < targetSize_nested) {
+                        if (oi.isEnabled()) {
+                            boolean worked = mInterface.setEnabled(oi.packageName, false, userId, true);
+                            if (!worked) {
+                                System.err.println("Failed to disable " + oi.packageName);
+                            }
+                        }
+                    } else {
+                        if (iterator == overlaySize) {
+                            if (oi.isEnabled()) {
+                                boolean worked = mInterface.setEnabled(oi.packageName, false, userId, false);
+                                if (!worked) {
+                                    System.err.println("Failed to disable " + oi.packageName);
+                                }
+                            }
+                        } else {
+                            if (oi.isEnabled()) {
+                                boolean worked = mInterface.setEnabled(oi.packageName, false, userId, true);
+                                if (!worked) {
+                                    System.err.println("Failed to disable " + oi.packageName);
+                                }
+                            }
+                        }
                     }
+                    iterator_nested++;
                 }
             }
             mInterface.refresh(userId);
@@ -276,4 +294,4 @@ final class OverlayManagerShellCommand extends ShellCommand {
         }
         return ret;
     }
-}
+}s
