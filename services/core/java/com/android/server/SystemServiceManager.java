@@ -104,6 +104,14 @@ public class SystemServiceManager {
                         + ": service constructor threw an exception", ex);
             }
 
+            startService(service);
+            return service;
+        } finally {
+            Trace.traceEnd(Trace.TRACE_TAG_SYSTEM_SERVER);
+        }
+    }
+
+    public void startService(SystemService service) {
             // Register it.
             mServices.add(service);
 
@@ -111,12 +119,9 @@ public class SystemServiceManager {
             try {
                 service.onStart();
             } catch (RuntimeException ex) {
-                throw new RuntimeException("Failed to start service " + name
+            throw new RuntimeException("Failed to start service " + service.getClass().getName()
                         + ": onStart threw an exception", ex);
-            }
-            return service;
-        } finally {
-            Trace.traceEnd(Trace.TRACE_TAG_SYSTEM_SERVER);
+
         }
     }
 

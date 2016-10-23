@@ -286,6 +286,11 @@ public final class AssetManager implements AutoCloseable {
         }
     }
 
+    /*package*/ final void recreateStringBlocks() {
+        synchronized (this) {
+            makeStringBlocks(null);
+        }
+    }
     /*package*/ final void makeStringBlocks(StringBlock[] seed) {
         final int seedNum = (seed != null) ? seed.length : 0;
         final int num = getStringBlockCount();
@@ -302,8 +307,8 @@ public final class AssetManager implements AutoCloseable {
     }
 
     /*package*/ final CharSequence getPooledStringForCookie(int cookie, int id) {
-        // Cookies map to string blocks starting at 1.
-        return mStringBlocks[cookie - 1].get(id);
+        final int index = cookieToIndex(cookie);
+        return mStringBlocks[index].get(id);
     }
 
     /**
@@ -668,6 +673,22 @@ public final class AssetManager implements AutoCloseable {
     private native final int addAssetPathNative(String path, boolean appAsLib);
 
      /**
+     * {@hide}
+     */
+    public final boolean removeAsset(int cookie) {
+        synchronized (this) {
+            boolean res = removeAssetNative(cookie);
+            makeStringBlocks(mStringBlocks);
+            return res;
+        }
+    }
+
+    /**
+     * {@hide}
+     */
+    public native final boolean removeAssetNative(int cookie);
+
+     /**
      * Add a set of assets to overlay an already added set of assets.
      *
      * This is only intended for application resources. System wide resources
@@ -860,6 +881,9 @@ public final class AssetManager implements AutoCloseable {
 
     private native final void init(boolean isSystem);
     private native final void destroy();
+    /*package*/ native final int nextCookie(int cookie);
+    /*package*/ native final int nextOverlayCookie(String targetPath, int cookie);
+    private native final int cookieToIndex(int cookie);
 
     private final void incRefsLocked(long id) {
         if (DEBUG_REFS) {
@@ -885,3 +909,4 @@ public final class AssetManager implements AutoCloseable {
         }
     }
 }
+

@@ -74,6 +74,7 @@ static const bool kDebugLoadTableSuperNoisy = false;
 static const bool kDebugTableTheme = false;
 static const bool kDebugResXMLTree = false;
 static const bool kDebugLibNoisy = false;
+static const bool kDebugTableInvariants = false;
 
 // TODO: This code uses 0xFFFFFFFF converted to bag_set* as a sentinel value. This is bad practice.
 
@@ -3744,6 +3745,11 @@ status_t ResTable::add(ResTable* src, bool isSystemAsset)
 }
 
 status_t ResTable::addEmpty(const int32_t cookie) {
+    if (cookie >= 0 && cookieToHeaderIndex(cookie) >= 0) {
+        ALOGE("cookie %d already added to table", cookie);
+        return BAD_VALUE;
+    }
+
     Header* header = new Header(this);
     header->index = mHeaders.size();
     header->cookie = cookie;
@@ -3771,6 +3777,11 @@ status_t ResTable::addInternal(const void* data, size_t dataSize, const void* id
         ALOGE("Invalid data. Size(%d) is smaller than a ResTable_header(%d).",
                 (int) dataSize, (int) sizeof(ResTable_header));
         return UNKNOWN_ERROR;
+    }
+
+    if (cookie >= 0 && cookieToHeaderIndex(cookie) >= 0) {
+        ALOGE("cookie %d already added to table", cookie);
+        return BAD_VALUE;
     }
 
     Header* header = new Header(this);
@@ -3891,6 +3902,89 @@ status_t ResTable::addInternal(const void* data, size_t dataSize, const void* id
     if (kDebugTableNoisy) {
         ALOGV("Returning from add with mError=%d\n", mError);
     }
+    if (kDebugTableInvariants) {
+        verifyInvariants();
+    }
+    return mError;
+}
+
+status_t ResTable::remove(const int32_t cookie)
+{
+    if (mError != NO_ERROR) {
+        return mError;
+    }
+
+    AutoMutex lock(mLock);
+
+    // remove references to header
+    const ssize_t index = cookieToHeaderIndex(cookie);
+    if (index < 0) {
+        return BAD_VALUE;
+    }
+    Header* header = mHeaders.itemAt(index);
+    if (header == NULL) {
+        return BAD_VALUE;
+    }
+    mHeaders.removeAt(index);
+    if (header->owner == this && header->ownedData) {
+        free(header->ownedData);
+    }
+
+    // fix Header::index invariant (if we've removed a header in the middle of the vector)
+    const size_t N = mHeaders.size();
+    for (size_t i = 0; i < N; i++) {
+        mHeaders[i]->index = i;
+    }
+
+    // remove references to packages and types associated with header
+    const size_t Ng = mPackageGroups.size();
+    for (size_t i = 0; i < Ng; i++) {
+        PackageGroup* pg = mPackageGroups.itemAt(i);
+        const size_t N = pg->packages.size();
+        for (size_t j = 0; j < N; j++) {
+            Package *p = pg->packages.itemAt(j);
+            if (p->header == header) {
+                pg->packages.removeAt(j);
+                delete p;
+                break;
+            }
+        }
+
+        const size_t Nt = pg->types.size();
+        for (size_t j = 0; j < Nt; j++) {
+            TypeList& tl = pg->types.editItemAt(j);
+            const size_t N = tl.size();
+            for (size_t k = 0; k < N; k++) {
+                const Type* const typeSpec = tl[k];
+                if (typeSpec->header == header) {
+                    tl.removeAt(k);
+                    delete typeSpec;
+                    break;
+                }
+            }
+        }
+
+        if (pg->packages.size() == 0) {
+            mPackageGroups.removeAt(i);
+            delete pg;
+
+            // rebuild mPackageMap now that elements in mPackageGroups may have been shifted
+            memset(mPackageMap, 0, sizeof(mPackageMap));
+            const size_t Npg = mPackageGroups.size();
+            for (size_t j = 0; j < Npg; j++) {
+                const PackageGroup *pg = mPackageGroups.itemAt(j);
+                mPackageMap[pg->id] = j + 1;
+            }
+            break;
+        }
+    }
+
+    delete header;
+
+    if (kDebugTableInvariants) {
+        verifyInvariants();
+    }
+
     return mError;
 }
 
@@ -5875,6 +5969,21 @@ void ResTable::getConfigurations(Vector<ResTable_config>* configs, bool ignoreMi
     forEachConfiguration(ignoreMipmap, ignoreAndroidPackage, includeSystemConfigs, func);
 }
 
+ssize_t ResTable::cookieToHeaderIndex(int32_t cookie) const
+{
+    if (cookie < 0) {
+        return -1;
+    }
+
+    const size_t N = mHeaders.size();
+    for (size_t i = 0; i < N; i++) {
+        if (mHeaders[i]->cookie == cookie) {
+            return mHeaders[i]->index;
+        }
+    }
+    return -1;
+}
+
 static bool compareString8AndCString(const String8& str, const char* cStr) {
     return strcmp(str.string(), cStr) < 0;
 }
@@ -6160,8 +6269,9 @@ status_t ResTable::parsePackage(const ResTable_package* const pkg,
 
     uint32_t id = dtohl(pkg->id);
     KeyedVector<uint8_t, IdmapEntries> idmapEntries;
+    const bool isOverlayPackage = header->resourceIDMap != NULL;
 
-    if (header->resourceIDMap != NULL) {
+    if (isOverlayPackage) {
         uint8_t targetPackageId = 0;
         status_t err = parseIdmap(header->resourceIDMap, header->resourceIDMapSize, &targetPackageId, &idmapEntries);
         if (err != NO_ERROR) {
@@ -6682,6 +6792,31 @@ status_t ResTable::createIdmap(const ResTable& overlay,
         return UNKNOWN_ERROR;
     }
 
+    // add an empty block for each type in the overlay package that doesn't
+    // have any matching entries; this ensures parsePackage gets a unique type
+    // ID for each type
+    for (size_t typeIndex = 0; typeIndex < overlay.mPackageGroups[0]->types.size(); ++typeIndex) {
+        const TypeList& typeList = overlay.mPackageGroups[0]->types[typeIndex];
+        if (typeList.isEmpty()) {
+            continue;
+        }
+        bool alreadyInIdmap = false;
+        for (size_t i = 0; i < map.size(); ++i) {
+            const IdmapTypeMap& type = map.valueAt(i);
+            if (type.overlayTypeId == static_cast<ssize_t>(typeIndex) + 1) {
+                alreadyInIdmap = true;
+                break;
+            }
+        }
+        if (!alreadyInIdmap) {
+            IdmapTypeMap typeMap;
+            typeMap.overlayTypeId = typeIndex + 1;
+            typeMap.entryOffset = 0;
+            map.add(map.size(), typeMap);
+            *outSize += 4 * sizeof(uint16_t);
+        }
+    }
+
     if ((*outData = malloc(*outSize)) == NULL) {
         return NO_MEMORY;
     }
@@ -7112,6 +7247,7 @@ void ResTable::print(bool inclValues) const
                     }
                 }
             }
+
         }
     }
 }

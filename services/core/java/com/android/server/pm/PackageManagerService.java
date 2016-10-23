@@ -383,25 +383,24 @@ public class PackageManagerService extends IPackageManager.Stub {
     // package apks to install directory.
     private static final String INSTALL_PACKAGE_SUFFIX = "-";
 
-    static final int SCAN_NO_DEX = 1<<1;
-    static final int SCAN_FORCE_DEX = 1<<2;
-    static final int SCAN_UPDATE_SIGNATURE = 1<<3;
-    static final int SCAN_NEW_INSTALL = 1<<4;
-    static final int SCAN_NO_PATHS = 1<<5;
-    static final int SCAN_UPDATE_TIME = 1<<6;
-    static final int SCAN_DEFER_DEX = 1<<7;
-    static final int SCAN_BOOTING = 1<<8;
-    static final int SCAN_TRUSTED_OVERLAY = 1<<9;
-    static final int SCAN_DELETE_DATA_ON_FAILURES = 1<<10;
-    static final int SCAN_REPLACING = 1<<11;
-    static final int SCAN_REQUIRE_KNOWN = 1<<12;
-    static final int SCAN_MOVE = 1<<13;
-    static final int SCAN_INITIAL = 1<<14;
-    static final int SCAN_CHECK_ONLY = 1<<15;
-    static final int SCAN_DONT_KILL_APP = 1<<17;
-    static final int SCAN_IGNORE_FROZEN = 1<<18;
+    private static final int SCAN_NO_DEX = 1<<1;
+    private static final int SCAN_FORCE_DEX = 1<<2;
+    private static final int SCAN_UPDATE_SIGNATURE = 1<<3;
+    private static final int SCAN_NEW_INSTALL = 1<<4;
+    private static final int SCAN_NO_PATHS = 1<<5;
+    private static final int SCAN_UPDATE_TIME = 1<<6;
+    private static final int SCAN_DEFER_DEX = 1<<7;
+    private static final int SCAN_BOOTING = 1<<8;
+    private static final int SCAN_DELETE_DATA_ON_FAILURES = 1<<9;
+    private static final int SCAN_REPLACING = 1<<10;
+    private static final int SCAN_REQUIRE_KNOWN = 1<<11;
+    private static final int SCAN_MOVE = 1<<12;
+    private static final int SCAN_INITIAL = 1<<13;
+    private static final int SCAN_CHECK_ONLY = 1<<14;
+    private static final int SCAN_DONT_KILL_APP = 1<<15;
+    private static final int SCAN_IGNORE_FROZEN = 1<<16;
 
-    static final int REMOVE_CHATTY = 1<<16;
+    private static final int REMOVE_CHATTY = 1<<17;
 
     private static final int[] EMPTY_INT_ARRAY = new int[0];
 
@@ -574,10 +573,6 @@ public class PackageManagerService extends IPackageManager.Stub {
 
     final ArrayMap<String, Set<String>> mKnownCodebase =
             new ArrayMap<String, Set<String>>();
-
-    // Tracks available target package names -> overlay package paths.
-    final ArrayMap<String, ArrayMap<String, PackageParser.Package>> mOverlays =
-        new ArrayMap<String, ArrayMap<String, PackageParser.Package>>();
 
     /**
      * Tracks new system packages [received in an OTA] that we expect to
@@ -959,7 +954,6 @@ public class PackageManagerService extends IPackageManager.Stub {
                         filter.hasDataScheme(IntentFilter.SCHEME_HTTPS));
     }
 
-    ArrayList<ComponentName> mDisabledComponentsList;
 
     // Set of pending broadcasts for aggregating enable/disable of components.
     static class PendingPackageBroadcasts {
@@ -1887,6 +1881,7 @@ public class PackageManagerService extends IPackageManager.Stub {
 
                 // Send added for users that don't see the package for the first time
                 if (update) {
+                    extras = new Bundle(extras);
                     extras.putBoolean(Intent.EXTRA_REPLACING, true);
                 }
                 sendPackageBroadcast(Intent.ACTION_PACKAGE_ADDED, packageName,
@@ -2427,8 +2422,8 @@ public class PackageManagerService extends IPackageManager.Stub {
             File vendorOverlayDir = new File(VENDOR_OVERLAY_DIR);
             scanDirTracedLI(vendorOverlayDir, mDefParseFlags
                     | PackageParser.PARSE_IS_SYSTEM
-                    | PackageParser.PARSE_IS_SYSTEM_DIR
-                    | PackageParser.PARSE_TRUSTED_OVERLAY, scanFlags | SCAN_TRUSTED_OVERLAY, 0);
+                    | PackageParser.PARSE_IS_SYSTEM_DIR,
+                    scanFlags, 0);
 
             // Find base frameworks (resource packages without code).
             scanDirTracedLI(frameworkDir, mDefParseFlags
@@ -2703,38 +2698,6 @@ public class PackageManagerService extends IPackageManager.Stub {
                     applyFactoryDefaultBrowserLPw(user.id);
                     primeDomainVerificationsLPw(user.id);
                 }
-            }
-
-            // Disable components marked for disabling at build-time
-            mDisabledComponentsList = new ArrayList<ComponentName>();
-            for (String name : mContext.getResources().getStringArray(
-                    com.android.internal.R.array.config_disabledComponents)) {
-                ComponentName cn = ComponentName.unflattenFromString(name);
-                mDisabledComponentsList.add(cn);
-                Slog.v(TAG, "Disabling " + name);
-                String className = cn.getClassName();
-                PackageSetting pkgSetting = mSettings.mPackages.get(cn.getPackageName());
-                if (pkgSetting == null || pkgSetting.pkg == null
-                        || !pkgSetting.pkg.hasComponentClassName(className)) {
-                    Slog.w(TAG, "Unable to disable " + name);
-                    continue;
-                }
-                pkgSetting.disableComponentLPw(className, UserHandle.USER_OWNER);
-            }
-
-            // Enable components marked for forced-enable at build-time
-            for (String name : mContext.getResources().getStringArray(
-                    com.android.internal.R.array.config_forceEnabledComponents)) {
-                ComponentName cn = ComponentName.unflattenFromString(name);
-                Slog.v(TAG, "Enabling " + name);
-                String className = cn.getClassName();
-                PackageSetting pkgSetting = mSettings.mPackages.get(cn.getPackageName());
-                if (pkgSetting == null || pkgSetting.pkg == null
-                        || !pkgSetting.pkg.hasComponentClassName(className)) {
-                    Slog.w(TAG, "Unable to enable " + name);
-                    continue;
-                }
-                pkgSetting.enableComponentLPw(className, UserHandle.USER_OWNER);
             }
 
             // Prepare storage for system user really early during boot,
@@ -6661,59 +6624,7 @@ public class PackageManagerService extends IPackageManager.Stub {
         return finalList;
     }
 
-    private void createIdmapsForPackageLI(PackageParser.Package pkg) {
-        ArrayMap<String, PackageParser.Package> overlays = mOverlays.get(pkg.packageName);
-        if (overlays == null) {
-            Slog.w(TAG, "Unable to create idmap for " + pkg.packageName + ": no overlay packages");
-            return;
-        }
-        for (PackageParser.Package opkg : overlays.values()) {
-            // Not much to do if idmap fails: we already logged the error
-            // and we certainly don't want to abort installation of pkg simply
-            // because an overlay didn't fit properly. For these reasons,
-            // ignore the return value of createIdmapForPackagePairLI.
-            createIdmapForPackagePairLI(pkg, opkg);
-        }
-    }
 
-    private boolean createIdmapForPackagePairLI(PackageParser.Package pkg,
-            PackageParser.Package opkg) {
-        if (!opkg.mTrustedOverlay) {
-            Slog.w(TAG, "Skipping target and overlay pair " + pkg.baseCodePath + " and " +
-                    opkg.baseCodePath + ": overlay not trusted");
-            return false;
-        }
-        ArrayMap<String, PackageParser.Package> overlaySet = mOverlays.get(pkg.packageName);
-        if (overlaySet == null) {
-            Slog.e(TAG, "was about to create idmap for " + pkg.baseCodePath + " and " +
-                    opkg.baseCodePath + " but target package has no known overlays");
-            return false;
-        }
-        final int sharedGid = UserHandle.getSharedAppGid(pkg.applicationInfo.uid);
-        // TODO: generate idmap for split APKs
-        try {
-            mInstaller.idmap(pkg.baseCodePath, opkg.baseCodePath, sharedGid);
-        } catch (InstallerException e) {
-            Slog.e(TAG, "Failed to generate idmap for " + pkg.baseCodePath + " and "
-                    + opkg.baseCodePath);
-            return false;
-        }
-        PackageParser.Package[] overlayArray =
-            overlaySet.values().toArray(new PackageParser.Package[0]);
-        Comparator<PackageParser.Package> cmp = new Comparator<PackageParser.Package>() {
-            public int compare(PackageParser.Package p1, PackageParser.Package p2) {
-                return p1.mOverlayPriority - p2.mOverlayPriority;
-            }
-        };
-        Arrays.sort(overlayArray, cmp);
-
-        pkg.applicationInfo.resourceDirs = new String[overlayArray.length];
-        int i = 0;
-        for (PackageParser.Package p : overlayArray) {
-            pkg.applicationInfo.resourceDirs[i++] = p.baseCodePath;
-        }
-        return true;
-    }
 
     private void scanDirTracedLI(File dir, final int parseFlags, int scanFlags, long currentTime) {
         Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "scanDir");
@@ -6851,9 +6762,6 @@ public class PackageManagerService extends IPackageManager.Stub {
         pp.setOnlyCoreApps(mOnlyCore);
         pp.setDisplayMetrics(mMetrics);
 
-        if ((scanFlags & SCAN_TRUSTED_OVERLAY) != 0) {
-            parseFlags |= PackageParser.PARSE_TRUSTED_OVERLAY;
-        }
 
         Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "parsePackage");
         final PackageParser.Package pkg;
@@ -8067,15 +7975,11 @@ public class PackageManagerService extends IPackageManager.Stub {
             pkg.applicationInfo.privateFlags &=
                     ~ApplicationInfo.PRIVATE_FLAG_DIRECT_BOOT_AWARE;
         }
-        pkg.mTrustedOverlay = (policyFlags&PackageParser.PARSE_TRUSTED_OVERLAY) != 0;
 
         if ((policyFlags&PackageParser.PARSE_IS_PRIVILEGED) != 0) {
             pkg.applicationInfo.privateFlags |= ApplicationInfo.PRIVATE_FLAG_PRIVILEGED;
         }
 
-        if ((policyFlags & PackageParser.PARSE_ENFORCE_CODE) != 0) {
-            enforceCodePolicy(pkg);
-        }
 
         if (mCustomResolverComponentName != null &&
                 mCustomResolverComponentName.getPackageName().equals(pkg.packageName)) {
@@ -8644,7 +8548,6 @@ public class PackageManagerService extends IPackageManager.Stub {
         // writer
         Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "updateSettings");
 
-        boolean createIdmapFailed = false;
         synchronized (mPackages) {
             // We don't expect installation to fail beyond this point
 
@@ -8982,36 +8885,9 @@ public class PackageManagerService extends IPackageManager.Stub {
             }
 
             pkgSetting.setTimeStamp(scanFileTime);
-
-            // Create idmap files for pairs of (packages, overlay packages).
-            // Note: "android", ie framework-res.apk, is handled by native layers.
-            if (pkg.mOverlayTarget != null) {
-                // This is an overlay package.
-                if (pkg.mOverlayTarget != null && !pkg.mOverlayTarget.equals("android")) {
-                    if (!mOverlays.containsKey(pkg.mOverlayTarget)) {
-                        mOverlays.put(pkg.mOverlayTarget,
-                                new ArrayMap<String, PackageParser.Package>());
-                    }
-                    ArrayMap<String, PackageParser.Package> map = mOverlays.get(pkg.mOverlayTarget);
-                    map.put(pkg.packageName, pkg);
-                    PackageParser.Package orig = mPackages.get(pkg.mOverlayTarget);
-                    if (orig != null && !createIdmapForPackagePairLI(orig, pkg)) {
-                        createIdmapFailed = true;
-                    }
-                }
-            } else if (mOverlays.containsKey(pkg.packageName) &&
-                    !pkg.packageName.equals("android")) {
-                // This is a regular package, with one or more known overlay packages.
-                createIdmapsForPackageLI(pkg);
-            }
         }
 
         Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
-
-        if (createIdmapFailed) {
-            throw new PackageManagerException(INSTALL_FAILED_UPDATE_INCOMPATIBLE,
-                    "scanPackageLI failed to createIdmap");
-        }
         return pkg;
     }
 
@@ -17722,12 +17598,6 @@ Slog.v(TAG, ":: stepped forward, applying functor at tag " + parser.getName());
     public void setComponentEnabledSetting(ComponentName componentName,
             int newState, int flags, int userId) {
         if (!sUserManager.exists(userId)) return;
-        // Don't allow to enable components marked for disabling at build-time
-        if (mDisabledComponentsList.contains(componentName)) {
-            Slog.d(TAG, "Ignoring attempt to set enabled state of disabled component "
-                    + componentName.flattenToString());
-            return;
-        }
         setEnabledSetting(componentName.getPackageName(),
                 componentName.getClassName(), newState, flags, userId, null);
     }
@@ -20918,6 +20788,24 @@ Slog.v(TAG, ":: stepped forward, applying functor at tag " + parser.getName());
         public boolean canPackageBeWiped(int userId, String packageName) {
             return mProtectedPackages.canPackageBeWiped(userId,
                     packageName);
+        }
+        public List<PackageInfo> getOverlayPackages(int userId) {
+            final ArrayList<PackageInfo> overlayPackages = new ArrayList<PackageInfo>();
+
+            enforceCrossUserPermission(Binder.getCallingUid(), userId, true, false, "get overlay packages");
+
+            // reader
+            synchronized (mPackages) {
+                for (PackageParser.Package p : mPackages.values()) {
+                    if (p.mOverlayTarget != null) {
+                        PackageInfo pkg = generatePackageInfo((PackageSetting)p.mExtras, 0, userId);
+                        if (pkg != null) {
+                            overlayPackages.add(pkg);
+                        }
+                    }
+                }
+            }
+            return overlayPackages;
         }
     }
 
