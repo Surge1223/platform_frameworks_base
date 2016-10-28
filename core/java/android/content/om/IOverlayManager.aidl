@@ -129,12 +129,6 @@ interface IOverlayManager {
     boolean setLowestPriority(in String packageName, in int userId);
 
     /**
-     * Return whether the overlay is enabled or not
-     * @param oi The overlay object of which is being evaluated to return whether the theme is enabled or not
-     */
-    boolean getEnabled(in OverlayInfo oi);
-
-    /**
      * Refresh assets
      * @param uid the user to refresh assets for
      */

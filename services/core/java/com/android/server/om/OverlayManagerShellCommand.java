@@ -207,11 +207,9 @@ final class OverlayManagerShellCommand extends ShellCommand {
             Map<String, List<OverlayInfo>> targetsAndOverlays = mInterface.getAllOverlays(userId);
             for (Entry<String, List<OverlayInfo>> targetEntry : targetsAndOverlays.entrySet()) {
                 for (OverlayInfo oi : targetEntry.getValue()) {
-                    if (mInterface.getEnabled(oi)) {
-                        boolean worked = mInterface.setEnabled(oi.packageName, false, userId, true);
-                        if (!worked) {
-                            System.err.println("Failed to disable " + oi.packageName);
-                        }
+                    boolean worked = mInterface.setEnabled(oi.packageName, false, userId, true);
+                    if (!worked) {
+                        System.err.println("Failed to disable " + oi.packageName);
                     }
                 }
             }

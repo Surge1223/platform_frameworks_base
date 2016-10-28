@@ -599,10 +599,6 @@ public final class OverlayManagerService extends SystemService {
             List targeted = new ArrayList(targets);
             updateSelectedAssets(uid, targeted);
         }
-
-        public boolean getEnabled(@NonNull final OverlayInfo oi) {
-            return oi.isEnabled();
-        }
     };
 
     private boolean isOverlayPackage(@NonNull final PackageInfo pi) {
