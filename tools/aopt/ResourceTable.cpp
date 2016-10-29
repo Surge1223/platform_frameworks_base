@@ -91,8 +91,8 @@ status_t compileXmlFile(const Bundle* bundle,
     if (table->processBundleFormat(bundle, resourceName, target, root) != NO_ERROR) {
         return UNKNOWN_ERROR;
     }
-    bool hasErrors = false;
     
+    bool hasErrors = false;
     if ((options&XML_COMPILE_ASSIGN_ATTRIBUTE_IDS) != 0) {
         status_t err = root->assignResourceIds(assets, table);
         if (err != NO_ERROR) {
@@ -4998,18 +4998,18 @@ static sp<XMLNode> findOnlyChildElement(const sp<XMLNode>& parent) {
  * resources. The bundle format looks like this:
  *
  * <!-- res/drawable/bundle.xml -->
- * <animated-vector xmlns:aapt="http://schemas.android.com/aopt">
- *   <aapt:attr name="android:drawable">
+ * <animated-vector xmlns:aopt="http://schemas.android.com/aopt">
+ *   <aopt:attr name="android:drawable">
  *     <vector android:width="60dp"
  *             android:height="60dp">
  *       <path android:name="v"
  *             android:fillColor="#000000"
  *             android:pathData="M300,70 l 0,-70 70,..." />
  *     </vector>
- *   </aapt:attr>
+ *   </aopt:attr>
  * </animated-vector>
  *
- * When AOPT sees the <aapt:attr> tag, it will extract its single element and its children
+ * When AOPT sees the <aopt:attr> tag, it will extract its single element and its children
  * into a new high-level resource, assigning it a name and ID. Then value of the `name`
  * attribute must be a resource attribute. That resource attribute is inserted into the parent
  * with the reference to the extracted resource as the value.
@@ -5042,7 +5042,7 @@ status_t ResourceTable::processBundleFormatImpl(const Bundle* bundle,
                                                 const sp<AoptFile>& target,
                                                 const sp<XMLNode>& parent,
                                                 Vector<sp<XMLNode> >* namespaces) {
-    const String16 kAoptNamespaceUri16("http://schemas.android.com/Aopt");
+    const String16 kAoptNamespaceUri16("http://schemas.android.com/aopt");
     const String16 kName16("name");
     const String16 kAttr16("attr");
     const String16 kAssetPackage16(mAssets->getPackage());
@@ -5071,7 +5071,7 @@ status_t ResourceTable::processBundleFormatImpl(const Bundle* bundle,
             continue;
         }
 
-        // This is the <Aopt:attr> tag. Look for the 'name' attribute.
+        // This is the <aopt:attr> tag. Look for the 'name' attribute.
         SourcePos source(child->getFilename(), child->getStartLineNumber());
 
         sp<XMLNode> nestedRoot = findOnlyChildElement(child);
@@ -5170,7 +5170,7 @@ status_t ResourceTable::processBundleFormatImpl(const Bundle* bundle,
         // Add the reference to the inline resource.
         parent->addAttribute(attrNs, attrName, nestedResourceRef);
 
-        // Remove the <Aopt:attr> child element from here.
+        // Remove the <aopt:attr> child element from here.
         children.removeAt(i);
         i--;
 
