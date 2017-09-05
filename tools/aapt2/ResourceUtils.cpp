@@ -17,6 +17,9 @@
 #include "ResourceUtils.h"
 
 #include <sstream>
+#include <ostream>
+#include <string>
+#include "androidfw/StringPiece.h"
 
 #include "androidfw/ResourceTypes.h"
 #include "androidfw/ResourceUtils.h"

@@ -5,6 +5,8 @@ LOCAL_MODULE_TAGS := optional
 
 LOCAL_SRC_FILES := $(call all-subdir-java-files)
 
+USE_AAPT2 := true
+
 LOCAL_PACKAGE_NAME := OverlaysTarget
 
 LOCAL_MODULE_TAGS := tests
