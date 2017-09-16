@@ -22,6 +22,7 @@ import static android.system.OsConstants.STDERR_FILENO;
 import static android.system.OsConstants.STDIN_FILENO;
 import static android.system.OsConstants.STDOUT_FILENO;
 
+import android.graphics.Typeface;
 import android.net.Credentials;
 import android.net.LocalSocket;
 import android.os.FactoryTest;
@@ -208,6 +209,10 @@ class ZygoteConnection {
                 fdsToIgnore = new int[] { childPipeFd.getInt$(), serverPipeFd.getInt$() };
             }
 
+            if (parsedArgs.refreshTheme) {
+                Typeface.recreateDefaults();
+             }
+ 
             /**
              * In order to avoid leaking descriptors to the Zygote child,
              * the native code must close the two Zygote socket descriptors
@@ -421,9 +426,12 @@ class ZygoteConnection {
          * The app data directory. May be null, e.g., for the system server. Note that this might
          * not be reliable in the case of process-sharing apps.
          */
-        String appDataDir;
+         String appDataDir;
+ 
+        /** from --refresh_theme */
+        boolean refreshTheme;
 
-        /**
+         /**
          * Whether to preload a package, with the package path in the remainingArgs.
          */
         String preloadPackage;
@@ -597,6 +605,8 @@ class ZygoteConnection {
                     instructionSet = arg.substring(arg.indexOf('=') + 1);
                 } else if (arg.startsWith("--app-data-dir=")) {
                     appDataDir = arg.substring(arg.indexOf('=') + 1);
+                } else if (arg.equals("--refresh_theme")) {
+                    refreshTheme = true;
                 } else if (arg.equals("--preload-package")) {
                     preloadPackage = args[++curArg];
                     preloadPackageLibs = args[++curArg];
