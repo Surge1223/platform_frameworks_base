@@ -704,7 +704,7 @@ public class Typeface {
         long ni = 0;
         if (family != null) {
             // Return early if we're asked for the same face/style
-            if (family.getStyle() == style) {
+            if (family.mStyle == style) {
                 return family;
             }
 
@@ -852,8 +852,8 @@ public class Typeface {
         for (int i = 0; i < families.length; i++) {
             ptrArray[i] = families[i].mNativePtr;
         }
-        Typeface typeface = new Typeface(nativeCreateFromArray(ptrArray, RESOLVE_BY_FONT_TABLE, RESOLVE_BY_FONT_TABLE));
-        return typeface;
+        return new Typeface(nativeCreateFromArray(
+                ptrArray, RESOLVE_BY_FONT_TABLE, RESOLVE_BY_FONT_TABLE));
     }
 
     /**
@@ -955,6 +955,7 @@ public class Typeface {
 
         // add missing families
         for (FontConfig.Family srcFamily : src.getFamilies()) {
+            String name = srcFamily.getName();
             boolean addFamily = true;
             for (int i = 0; i < N && addFamily; i++) {
                 final FontConfig.Family dstFamily = families.get(i);
@@ -999,7 +1000,7 @@ public class Typeface {
      *
      * This should only be called once, from the static class initializer block.
      */
-    private static void init() throws IOException, XmlPullParserException {
+    private static void init() {
         // Load font config and initialize Minikin state
         File systemFontConfigLocation = getSystemFontConfigLocation();
         File themeFontConfigLocation = getThemeFontConfigLocation();
@@ -1010,34 +1011,24 @@ public class Typeface {
         File fontDir;
 
         if (themeConfigFile.exists()) {
+            // /data/system/theme/fonts/ exits so use it and copy default fonts
             configFile = themeConfigFile;
             fontDir = getThemeFontDirLocation();
         } else {
             configFile = systemConfigFile;
             fontDir = getSystemFontDirLocation();
         }
-        if (themeConfigFile.exists()) {
-            configFile = themeConfigFile;
-            fontDir = getThemeFontDirLocation();
-        } else {
-            configFile = systemConfigFile;
-            fontDir = getSystemFontDirLocation();
-        }
-        File instream= new File(fontDir.getAbsolutePath() + "/" + configFile);
 
         try {
-            FileInputStream file = new FileInputStream(instream);
-            FontConfig fontConfig = FontListParser.parse(file);
+            FontConfig fontConfig = FontListParser.parse(configFile,
+                    fontDir.getAbsolutePath());
             FontConfig systemFontConfig = null;
-
-            // If the fonts are coming from a theme, we will need to make sure that we include
-            // any font families from the system fonts that the theme did not include.
-            // NOTE: All the system font families without names ALWAYS get added.
             if (configFile == themeConfigFile) {
-                systemFontConfig = FontListParser.parse(file);
+                systemFontConfig = FontListParser.parse(systemConfigFile,
+                        getSystemFontDirLocation().getAbsolutePath());
                 addFallbackFontsForFamilyName(systemFontConfig, fontConfig, SANS_SERIF_FAMILY_NAME);
-                addMissingFontFamilies(systemFontConfig, fontConfig);
-                addMissingFontAliases(systemFontConfig, fontConfig);
+        //        addMissingFontFamilies(systemFontConfig, fontConfig);
+        //        addMissingFontAliases(systemFontConfig, fontConfig);
             }
 
             Map<String, ByteBuffer> bufferForPath = new HashMap<String, ByteBuffer>();
@@ -1128,25 +1119,13 @@ public class Typeface {
         sDefaults[3] = create((String) null, Typeface.BOLD_ITALIC);
     }
     static {
-        try {
-            init();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (XmlPullParserException e) {
-            e.printStackTrace();
-        }
+        init();
         // Set up defaults and typefaces exposed in public API
-        DEFAULT_INTERNAL         = create((String) null, 0);
-        DEFAULT_BOLD_INTERNAL    = create((String) null, Typeface.BOLD);
-        SANS_SERIF_INTERNAL      = create("sans-serif", 0);
-        SERIF_INTERNAL           = create("serif", 0);
-        MONOSPACE_INTERNAL       = create("monospace", 0);
-
-        DEFAULT         = new Typeface(DEFAULT_INTERNAL.native_instance);
-        DEFAULT_BOLD    = new Typeface(DEFAULT_BOLD_INTERNAL.native_instance);
-        SANS_SERIF      = new Typeface(SANS_SERIF_INTERNAL.native_instance);
-        SERIF           = new Typeface(SERIF_INTERNAL.native_instance);
-        MONOSPACE       = new Typeface(MONOSPACE_INTERNAL.native_instance);
+        DEFAULT         = create((String) null, 0);
+        DEFAULT_BOLD    = create((String) null, Typeface.BOLD);
+        SANS_SERIF      = create("sans-serif", 0);
+        SERIF           = create("serif", 0);
+        MONOSPACE       = create("monospace", 0);
 
         sDefaults = new Typeface[] {
                 DEFAULT,
@@ -1190,7 +1169,7 @@ public class Typeface {
 
         Typeface typeface = (Typeface) o;
 
-        return mStyle = typeface && native_instance == typeface.native_instance;
+        return mStyle == typeface.mStyle && native_instance == typeface.native_instance;
     }
 
     @Override
